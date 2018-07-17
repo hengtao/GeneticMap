@@ -7,6 +7,8 @@ import json
 import subprocess
 import configparser
 from functools import reduce
+import logging
+from datetime import datetime
 
 class HelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
     pass
@@ -65,7 +67,7 @@ def Cmd_and_Time(cmd, logger):
     return spend_time
 
 class FilterSNP():
-    def __init__(self, gatk, vcftools, beagle, args, logger):
+    def __init__(self, gatk, vcftools, beagle, plink,  args, logger):
         #TOOLS
         self.gatk = gatk
         self.vcftools = vcftools
@@ -73,32 +75,34 @@ class FilterSNP():
         self.plink  = plink
         #INPUT&&OUTPUT
         self.invcf = args.invcf
-        self.outvcf = args.outvcf
+        #self.outvcf = args.outvcf
         self.logger = logger
         self.threshold = args.missingthreshold
         self.tempdir = args.tempdir
-        self.ref  = args.refgenome
+        self.refgenome = args.refgenome
         self.nthreads = args.nthreads
         self.maf = args.maf
         self.LD = args.LD
 
         self.resultdir = args.resultdir
-        self.vcfdir = os.path.abs(os.path.dirname(self.invcf))
+        self.vcfdir = os.path.dirname(os.path.abspath(self.invcf))
         self.scriptpath = os.path.split(os.path.realpath(__file__))[0]
 
     def gatkfilter(self):
-        samplesnum = os.popen("grep \"#CHROM\" self.invcf|awk '{print NF-9}'").read()
+        samplesline = os.popen("""grep "#CHROM" {invcf}""".format(invcf = self.invcf)).read()
+        samplesnum  = len(samplesline.strip().split("\t")) - 9
+        print(samplesline)
         outsnpvcf   = self.vcfdir + "/snp.raw.vcf"
         outindelvcf = self.vcfdir + "/indel.raw.vcf"
         outsnpfilter = self.vcfdir + "/snp.gatkfilter.vcf"
         outindelfilter = self.vcfdir + "/indel.gatkfilter.vcf"
         outsnpnomissing = self.vcfdir + "/snp.missfilter.vcf"
 
-        cmd = "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx10g -jar {gatk} -T SelectVariants -R {refgenome} -V {invcf} -selectType SNP -o {outsnpvcf} \n".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = refgenome, invcf = self.invcf, outsnpvcf = outsnpvcf)
-        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx10g -jar {gatk} -T SelectVariants -R {refgenome} -V {invcf} -selectType INDEL -o {outindelvcf} \n".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = refgenome, invcf = self.invcf, outindelvcf = outindelvcf)
-        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx30g -jar {gatk} -T VariantFiltration -R {refgenome} -V {outsnpvcf} --filterExpression \" QUAL < 30.0 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || SOR > 4.0 || ReadPosRankSum < -8.0 \" --missingValuesInExpressionsShouldEvaluateAsFailing  --clusterWindowSize 10 --clusterSize 4  --filterName  snp_filter  -o {outsnpfilter}".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = refgenome, outsnpfilter = outsnpfilter, outsnpvcf = outsnpvcf)
-        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx30g -jar {gatk} -T VariantFiltration -R {refgenome} -V {outindelvcf} ".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = refgenome, outindelfilter = outindelfilter)
-        if samplesnum > 10:
+        cmd = "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx10g -jar {gatk} -T SelectVariants -R {refgenome} -V {invcf} -selectType SNP -o {outsnpvcf} \n".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = self.refgenome, invcf = self.invcf, outsnpvcf = outsnpvcf)
+        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx10g -jar {gatk} -T SelectVariants -R {refgenome} -V {invcf} -selectType INDEL -o {outindelvcf} \n".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = self.refgenome, invcf = self.invcf, outindelvcf = outindelvcf)
+        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx30g -jar {gatk} -T VariantFiltration -R {refgenome} -V {outsnpvcf} --filterExpression \" QUAL < 30.0 || QD < 2.0 || FS > 60.0 || MQ < 40.0 || SOR > 4.0 || ReadPosRankSum < -8.0 \" --missingValuesInExpressionsShouldEvaluateAsFailing  --clusterWindowSize 10 --clusterSize 4  --filterName  snp_filter  -o {outsnpfilter} \n ".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = self.refgenome, outsnpfilter = outsnpfilter, outsnpvcf = outsnpvcf)
+        cmd += "java -XX:ParallelGCThreads=4 -Djava.io.tmpdir={tempdir} -Xmx30g -jar {gatk} -T VariantFiltration -R {refgenome} -V {outindelvcf} ".format(tempdir = self.tempdir, gatk = self.gatk, refgenome = self.refgenome, outindelvcf = outindelvcf)
+        if int(samplesnum)> 10:
             cmd += "--filterExpression \" QUAL < 30.0 || QD < 2.0 || FS > 200.0 || SOR > 10.0 || ReadPosRankSum < -20.0 || MQ < 40.0 || MQRankSum < -12.5 || InbreedingCoeff < -0.8\" "
         else:
             cmd += "--filterExpression \" QUAL < 30.0 || QD < 2.0 || FS > 200.0 || SOR > 10.0 || ReadPosRankSum < -20.0 || MQ < 40.0 || MQRankSum < -12.5 \" "
@@ -107,12 +111,12 @@ class FilterSNP():
 
     def missingfilter(self):
         outsnpfilter = self.vcfdir + "/snp.gatkfilter.vcf"
-        outsnpnomissing = self.vcfdir + "/snp.missfilter.vcf"
+        outsnpnomissing = self.vcfdir + "/snp.missfilter"
         cmd = "{vcftools} --vcf {outsnpfilter} --max-missing {threshold} --recode --recode-INFO-all --out {outsnpnomissing}".format(vcftools = self.vcftools, outsnpfilter = outsnpfilter, threshold = self.threshold, outsnpnomissing = outsnpnomissing)
         Cmd_and_Time(cmd, self.logger)
 
     def imputation(self):
-        outsnpnomissing = self.vcfdir + "/snp.missfilter.vcf"
+        outsnpnomissing = self.vcfdir + "/snp.missfilter.recode.vcf"
         snpimpute = self.vcfdir + "/snp.impute"
         indelimpute = self.vcfdir + "/indel.impute"
         outindelfilter = self.vcfdir + "/indel.gatkfilter.vcf"
@@ -126,12 +130,12 @@ class FilterSNP():
         Cmd_and_Time(cmd, self.logger)
         if not os.path.exists(headerfile):
             os.system("zcat {snpimpute}.vcf.gz |grep  '^#' > {headerfile}".format(snpimpute = snpimpute, headerfile = headerfile))
-        os.system("zcat {snpimpute}.vcf.gz |grep -v'^#' > {snpnoheader}".format(snpimpute = snpimpute, snpnoheader = snpnoheader))
+        os.system("zcat {snpimpute}.vcf.gz |grep -v '^#' > {snpnoheader}".format(snpimpute = snpimpute, snpnoheader = snpnoheader))
         os.system("zcat {indelimpute}.vcf.gz |grep -v '^#' > {indnoheader}".format(indelimpute = indelimpute, indnoheader = indnoheader))
         os.system("cat {snpnoheader} {indnoheader} | sort -nk 1 > {redir}/temp.txt".format(snpnoheader = snpnoheader, indnoheader = indnoheader, redir = self.resultdir))
         os.system("cat {header} {redir}/temp.txt > {mergeimpute}".format(header = headerfile, redir = self.resultdir, mergeimpute = mergeimpute))
-        os.system("python3 {Bin}/sort_imputation_vcf.py -i {mergeimpute} -o {mergeimputesort}".format(Bin = self.scriptpath, mergeimpute = mergeimpute, mergeimputesort = mergesort))
-        os.system("rm -f {header} {snpnoheader} {indelnoheader} {redir}/temp.txt {mergeimpute} {snpimpute}.log {indelimpute}.log".format(header = headerfile, snpnoheader = snpnoheader, indelnoheader = indelnoheader, redir = redir, mergeimpute = mergeimpute, snpimpute = snpimpute, indelimpute = indelimpute))
+        os.system("python3 {Bin}/../SNPScripts/sort_imputation_vcf.py -i {mergeimpute} -o {mergeimputesort}".format(Bin = self.scriptpath, mergeimpute = mergeimpute, mergeimputesort = mergesort))
+        os.system("rm -f {header} {snpnoheader} {indelnoheader} {redir}/temp.txt {mergeimpute} {snpimpute}.log {indelimpute}.log".format(header = headerfile, snpnoheader = snpnoheader, indelnoheader = indnoheader, redir = self.resultdir, mergeimpute = mergeimpute, snpimpute = snpimpute, indelimpute = indelimpute))
 
     def result(self):
         self.logger.info("===== Extract VCF information is starting =====")
@@ -147,18 +151,19 @@ class FilterSNP():
     def bialleleMafilter(self):
         self.logger.info("===== Filterout SNPs without Bi-alleles is starting =====")
         snpimpute = self.vcfdir + "/snp.impute.vcf.gz"
-        snpbiallele = self.vcfdir + "/snp.impute.biallele.vcf"
-        cmd = "{vcftools} --vcf {snpimpute} --min-alleles 2 --max-alleles 2 --maf {maf}  --recode --recode-INFO-all --out {snpbiallele}".format(vcftools = self.vcftools, snpimpute = snpimpute, maf = self.maf, snpbiallele = snpbiallele)
+        snpbiallele = self.vcfdir + "/snp.impute.biallele"
+        cmd = "{vcftools} --gzvcf {snpimpute} --min-alleles 2 --max-alleles 2 --maf {maf}  --recode --recode-INFO-all --out {snpbiallele}".format(vcftools = self.vcftools, snpimpute = snpimpute, maf = self.maf, snpbiallele = snpbiallele)
         Cmd_and_Time(cmd, self.logger)
 
     def linkagedisequilibrium(self):
         self.logger.info("===== Filterout SNPs with LD is starting =====")
-        snpbiallele = self.vcfdir + "/snp.impute.biallele.vcf"
+        snpbiallele = self.vcfdir + "/snp.impute.biallele.recode.vcf"
         snpldvcf  = self.vcfdir + "/snp.impute.LD.vcf"
-        cmd = "cd {vcfdir} && {vcftools} --vcf {snpbiallele} -plink --out LD \n".format(vcfdir = self.vcfdir, vcftools = vcftools, snpbiallele = snpbiallele)
-        cmd = "cd {vcfdir} && {plink} --file LD --make-bed --out gbs --noweb --geno 0.05 --maf {maf} --hwe {LD}".format(vcfdir = self.vcfdir, plink = self.plink, maf = maf, LD = self.LD)
+        cmd = "cd {vcfdir} && {vcftools} --vcf {snpbiallele} --plink --out LD \n".format(vcfdir = self.vcfdir, vcftools = self.vcftools, snpbiallele = snpbiallele)
+        cmd += "cd {vcfdir} && {plink} --file LD --make-bed --out gbs --noweb --geno 0.05 --maf {maf} --hwe {LD}".format(vcfdir = self.vcfdir, plink = self.plink, maf = self.maf, LD = self.LD)
+        Cmd_and_Time(cmd, self.logger)
         chrposlist = list()
-        with open(vcfdir + "/gbs.bim", 'r') as bim:
+        with open(self.vcfdir + "/gbs.bim", 'r') as bim:
             for line in bim:
                 chrpos = line.strip().split("\t")[1]
                 if chrpos not in chrposlist:
@@ -177,7 +182,6 @@ class FilterSNP():
                         o.write(line)
 
 def main(args):
-    vcffile  = args.invcf
     logfile  = args.logfile
 
     ## Import logger, 获取logger实例
@@ -197,14 +201,17 @@ def main(args):
     logger.setLevel(level = logging.INFO)
 
     gatk     = Check_software(logger, "GenomeAnalysisTK.jar")
-    vcftools = Check_software(logger, "vcftools")
+    vcftools = Check_software(logger, "vcftools1")
     beagle   = Check_software(logger, "beagle.jar")
     plink    = Check_software(logger, "plink")
 
-    Fqtoclean   = FQTOCLEAN(args, logger, trimmomaticjar)
-    Fqtoclean.fastqc()
-    Fqtoclean.generate_adaptor()
-    Fqtoclean.trimmomatic()
+    filterSNP   = FilterSNP(gatk, vcftools, beagle, plink, args, logger)
+    #filterSNP.gatkfilter()
+    filterSNP.missingfilter()
+    filterSNP.imputation()
+    #filterSNP.result()
+    filterSNP.bialleleMafilter()
+    filterSNP.linkagedisequilibrium()
 
 if __name__ == "__main__":
     scriptpath = os.path.split(os.path.realpath(__file__))[0]
@@ -220,11 +227,9 @@ This script was used to filterout SNPs that failed to pass GATK criterion and wi
 '''.format(scriptpath = scriptpath))
 
     parse.add_argument('-invcf', '--inputvcf', required = True, dest = "invcf", help = "raw genotyping vcf", metavar = "Raw genotyping vcf file", type = str, nargs = '?')
-    parse.add_argument('-outsnp', '--outputsnp', required = True, dest = "outsnp", help = "vcf file without failed SNPs", metavar = "Vcf file without failed SNPs", type = str, nargs = '?')
-    parse.add_argument('-outindel', '--outputindel', required = True, dest = "outindel", help = "vcf file without failed indels", metavar = "Vcf file without failed indels", type = str, nargs = '?')
     parse.add_argument('-logfile', '--logfile', required = True, dest = "logfile", help = "Log file to record procedures of processing of this script", metavar = "Log file to record procedures of processing of this script", type = str, nargs = '?')
     parse.add_argument('-ref', '--refgenome', required = True, dest = "refgenome", help = "ref genome in fa format", type = str, nargs = '?')
-    parse.add_argument('-rate', '--threshold', required = False, dest = "missingthreshold", help = "SNPs max missing threshold in population", metavar = "SNPs max missing threshold in population", type = float, default = 0.85, nargs = '?')
+    parse.add_argument('-rate', '--threshold', required = False, dest = "missingthreshold", help = "SNPs max missing threshold in population", metavar = "SNPs max missing threshold in population", type = float, default = 0.01, nargs = '?')
     parse.add_argument('-tempdir', '--tempdir', required = True, dest = "tempdir", help = "Temp dir for all java programs", type = str, nargs = '?')
     parse.add_argument('-nt', '--nthreads', required = False, dest = "nthreads", help = "Number of threads for one run", type = int, default = 4, nargs = '?')
     parse.add_argument('-redir', '--resultdir', required = True, dest = "resultdir", help = "Result for stat files", type = str, nargs = '?')
@@ -234,3 +239,4 @@ This script was used to filterout SNPs that failed to pass GATK criterion and wi
     args = parse.parse_args()
 
     main(args)
+
