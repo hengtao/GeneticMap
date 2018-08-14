@@ -68,8 +68,8 @@ def Cmd_and_Time(cmd, logger):
 
 def CheckWrongParent(snpfile, outfile1, outfile2):
 	genotypedict = {"0/0":"A","0/1":"H","1/1":"B"}
-	o1 = open(outfile1, 'r')
-	o2 = open(outfile2, 'r')
+	o1 = open(outfile1, 'w+')
+	o2 = open(outfile2, 'w+')
 	
 	with open(snpfile, 'r') as f:
 		for line in f:
@@ -156,7 +156,8 @@ This script was used to check which parent was wrongly chose for GBS program.
 	parse.add_argument('-snpvcf', '--insnpvcf', required = True, dest = "invcf", help = "Filtered genotyping vcf", metavar = "Only contain snps that pass gatk filteration standard", type = str, nargs = '?')
     parse.add_argument('-parout', '--parout', required = True, dest = "parout", help = "Evidence supporting the correct male parent", metavar = "Multi-alt snp, geno of male parent is 0/0, 0/1 or 1/1, while female is 0/2, 1/2 or 2/2", type = str, nargs = '?')
 	parse.add_argument('-marout', '--marout', required = True, dest = "marout", help = "Evidence supporting the correct female parent", metavar = "Multi-alt snp, geno of female parent is 0/0, 0/1 or 1/1, while male is 0/2, 1/2 or 2/2", type = str, nargs = '?')
-
+	parse.add_argument('-parout', '--parout', required = True, dest = "parout", help = "Evidence supporting the correct male parent", metavar = "Multi-alt snp, geno of male parent is 0/0, 0/1 or 1/1, while female is 0/2, 1/2 or 2/2", type = str, nargs = '?')
+    parse.add_argument('-logfile', '--logfile', required = True, dest = "logfile", help = "Log file to record procedures of processing of this script", metavar = "Log file to record procedures of processing of this script", type = str, nargs = '?')
 	args = parse.parse_args()
 
     main(args)
