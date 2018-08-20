@@ -66,7 +66,22 @@ def Cmd_and_Time(cmd, logger):
         logger.info("Total time for this step is: {days} days, {hours} hours, {minites} minites, {seconds} seconds".format(days = days, hours = hours, minites = minites, seconds = seconds))
     return spend_time
 
-def VersionConvert():
+def EvidenceLevel(args):
+	FuncrefGene = re.compile(r"Func.refGene=(.*?);")
+	GenerefGene = re.compile(r"Gene.refGene=(.*?);")
+	evidence = args.evidence
+	queryvcf = args.queryvcf
+	with open(queryvcf) as f:
+		for line in f:
+			
+	
+def VersionConvert(args):
+	versionFile = args.versionFile
+	querygene = args.querygene
+	with open(querygene, 'r') as f:
+		for line in f:
+			
+	
 	
 def main(args):
     logfile  = args.logfile
@@ -92,13 +107,8 @@ def main(args):
     beagle   = Check_software(logger, "beagle.jar")
     plink    = Check_software(logger, "plink")
 
-    filterSNP   = FilterSNP(gatk, vcftools, beagle, plink, args, logger)
-    #filterSNP.gatkfilter()
-    filterSNP.missingfilter()
-    filterSNP.imputation()
-    #filterSNP.result()
-    filterSNP.bialleleMafilter()
-    filterSNP.linkagedisequilibrium()
+    if args.versionFile:
+		VersionConvert(args)
 
 if __name__ == "__main__":
     scriptpath = os.path.split(os.path.realpath(__file__))[0]
@@ -109,16 +119,12 @@ NOTE:
 This script was used to filterout SNPs that failed to pass GATK criterion and with missing rate in population above threshold.
 '''.format(scriptpath = scriptpath))
 
-    parse.add_argument('-invcf', '--inputvcf', required = True, dest = "invcf", help = "raw genotyping vcf", metavar = "Raw genotyping vcf file", type = str, nargs = '?')
+    parse.add_argument('-query', '--queryvcf', required = True, dest = "queryvcf", help = "vcf file without intergenic regions info", metavar = "vcf file without intergenic regions info", type = str, nargs = '?')
     parse.add_argument('-logfile', '--logfile', required = True, dest = "logfile", help = "Log file to record procedures of processing of this script", metavar = "Log file to record procedures of processing of this script", type = str, nargs = '?')
-    parse.add_argument('-ref', '--refgenome', required = True, dest = "refgenome", help = "ref genome in fa format", type = str, nargs = '?')
-    parse.add_argument('-rate', '--threshold', required = False, dest = "missingthreshold", help = "SNPs max missing threshold in population", metavar = "SNPs max missing threshold in population", type = float, default = 0.01, nargs = '?')
-    parse.add_argument('-tempdir', '--tempdir', required = True, dest = "tempdir", help = "Temp dir for all java programs", type = str, nargs = '?')
-    parse.add_argument('-nt', '--nthreads', required = False, dest = "nthreads", help = "Number of threads for one run", type = int, default = 4, nargs = '?')
-    parse.add_argument('-redir', '--resultdir', required = True, dest = "resultdir", help = "Result for stat files", type = str, nargs = '?')
-    parse.add_argument('-maf', '--maf', required = False, dest = "maf", help = "Minimun allele frequency", type = float, default = 0.01, nargs = '?')
-    parse.add_argument('-ld', '--LD', required = False, dest = "LD", help = "Threshold to define LD", type = float, default = 0.0001, nargs = '?')
+	parse.add_argument('-evidence', '--evidence', required = True, dest = "evidence", default = "exonic downstream intronic splicing upstream UTR3 UTR5", 
+					   help = "Positon where SNP/indel located in will be further studied", type = str, nargs = '*')
 
+	parse.add_argument('-versionFile', '--versionFile', required = False, dest = "versionFile", help = "Responding relationship between two versions", type = str, nargs = '?')
     args = parse.parse_args()
 
     main(args)
